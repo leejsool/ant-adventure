@@ -77,7 +77,7 @@ const EX = 480, GY = 455;          // 알 중심 x, 땅 y
 const BURST = 7.2;                 // 알이 터지는 시각
 const END = 18.5;                    // 제목이 뜨는 시각
 const FONT = '"Jua","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
-const BUILD = '2026-11-25 07:30';   // make-single.py가 만든 시각으로 바꿔 넣는다 (어느 버전을 열었는지 시작 화면에서 확인용)
+const BUILD = '2026-11-25 07:40';   // make-single.py가 만든 시각으로 바꿔 넣는다 (어느 버전을 열었는지 시작 화면에서 확인용)
 
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
@@ -370,7 +370,7 @@ const keys = {};
 const player = { active: false, x: 0, y: 0, dir: 1, fdx: 1, fdy: 0, leg: 0, walk: 0, biteT: 0, wantBite: false, wantJump: false, h: 0, vh: 0 };
 const PL_START = 10.4, BITE_DUR = .32;
 const WORLD = 4300, GTOP = 455, OUTMAX = 3250;
-let scene = 'cave', trans = null, invOpen = false, toast = null, ending = null, mg = null, hs = null, cs = null, bt = null, wormEver = false, pondWins = 0, train = 0, gym = null, homeCd = 0, restFx = null, restBuff = 0;
+let scene = 'cave', trans = null, invOpen = false, toast = null, ending = null, mg = null, hs = null, cs = null, bt = null, wormEver = false, pondWins = 0, train = 0, gym = null, homeCd = 0, restFx = null, restBuff = 0, coins = 20, shop = null;
 // 알의 시간: 물려서 죽은 알은 터진 상태로, 엔딩 중에는 다른 알들도 멈춘다
 function eggLt(e, t) {
   if (e.dead) return BURST + (t - e.deadT);
@@ -500,11 +500,14 @@ function updatePlayer(dt, t) {
     if (!trans.swapped && trans.p >= 1) {
       trans.swapped = true; scene = trans.to;
       const from = trans.from;
-      if (scene === 'out') { player.x = OUT_START.x; player.dir = 1; player.fdx = 0; player.fdy = -1; OUT.prompt = 0; homeCd = t + 2.5; skyCd = Math.max(skyCd, 6); }
+      if (scene === 'hotel1') { player.x = from === 'hotel2' ? 860 : 110; player.dir = from === 'hotel2' ? -1 : 1; OUT.prompt = null; }
+      else if (scene === 'hotel2') { player.x = 100; player.dir = 1; OUT.prompt = null; }
+      else if (scene === 'out' && from === 'hotel1') { player.x = HOTEL.x; player.dir = 1; player.fdx = 0; player.fdy = 1; OUT.prompt = null; homeCd = t + 2.5; skyCd = Math.max(skyCd, 6); }
+      else if (scene === 'out') { player.x = OUT_START.x; player.dir = 1; player.fdx = 0; player.fdy = -1; OUT.prompt = 0; homeCd = t + 2.5; skyCd = Math.max(skyCd, 6); }
       else if (scene === 'gym') { player.x = 880; player.dir = -1; OUT.prompt = null; }
       else if (from === 'gym') { player.x = 90; player.dir = 1; OUT.prompt = null; }
       else { player.x = 880; player.dir = -1; OUT.prompt = null; }
-      player.y = scene === 'out' ? OUT_START.y : eggs[0].gy - 38;
+      player.y = scene === 'out' ? (from === 'hotel1' ? HOTEL.y + 15 : OUT_START.y) : eggs[0].gy - 38;
     }
     if (trans.p >= 2) trans = null;
   }
@@ -512,7 +515,7 @@ function updatePlayer(dt, t) {
   OUT.parts = OUT.parts.filter(p => p.age < 1.6);
   const m = eggs[0];
   if (t < PL_START) return;
-  const gyAnt = m.gy - 38, frozen = !!trans || invOpen || !!ending || !!mg || !!hs || !!cs || !!bt || !!gym || !!restFx;
+  const gyAnt = m.gy - 38, frozen = !!trans || invOpen || !!ending || !!mg || !!hs || !!cs || !!bt || !!gym || !!restFx || !!shop;
   if (!player.active) { player.active = true; player.x = m.land; player.y = gyAnt; player.dir = 1; }
   let ax = frozen ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
   let ay = frozen ? 0 : (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
@@ -579,6 +582,10 @@ function updatePlayer(dt, t) {
     else if (scene === 'out' && t > homeCd && Math.hypot(player.x - HOLE.x, player.y + 55 - HOLE.y) < 48) gotoScene('cave');
     else if (scene === 'cave' && ax < 0 && player.x <= 46) gotoScene('gym');
     else if (scene === 'gym' && ax > 0 && player.x >= 915) gotoScene('cave');
+    else if (scene === 'out' && t > homeCd && Math.abs(player.x - HOTEL.x) < 44 && Math.abs(player.y + 55 - (HOTEL.y + 16)) < 44) gotoScene('hotel1');
+    else if (scene === 'hotel1' && ax < 0 && player.x <= 46) gotoScene('out');
+    else if (scene === 'hotel1' && ax > 0 && player.x >= 915) gotoScene('hotel2');
+    else if (scene === 'hotel2' && ax < 0 && player.x <= 46) gotoScene('hotel1');
   }
   // 물기
   if (player.biteT > 0) player.biteT = Math.max(0, player.biteT - dt);
@@ -608,12 +615,12 @@ function updatePlayer(dt, t) {
     if ((inv.worm || 0) > 0) { inv.worm--; food++; cheerUntil = t + 1.6; toast = { text: '+1 굴 식량 (' + food + ')', t: 0 }; sfx.chirp(); }
     else toast = { text: '지렁이 고기가 없어요', t: 0 };
   }
-  // 개미 호텔: 꿀(또는 지렁이 고기) 1개로 하룻밤 푹 쉰다
-  if (player.wantDeposit && !frozen && nearHotel()) {
-    if (inv.honey > 0) { inv.honey--; restFx = { t: 0 }; sfx.chirp(); }
-    else if (inv.worm > 0) { inv.worm--; restFx = { t: 0 }; sfx.chirp(); }
-    else toast = { text: '숙박비가 필요해요 (꿀이나 지렁이 고기 1개)', t: 0 };
+  // 개미 호텔 안: 1층 상점 / 프런트, 2층 객실 침대(무료로 푹 쉬기)
+  if (player.wantDeposit && !frozen && scene === 'hotel1') {
+    if (Math.abs(player.x - SHOP_X) < 130) { shop = { tab: 0, cur: 0, top: 0, msg: '', msgT: 0 }; sfx.chirp(); }
+    else if (Math.abs(player.x - DESK_X) < 120) toast = { text: '어서 오세요, 개미 호텔이에요! 객실은 2층(오른쪽 계단)이고 숙박은 무료예요. 상점도 구경해 보세요', t: 0 };
   }
+  if (player.wantDeposit && !frozen && scene === 'hotel2' && bedNear() >= 0) { restFx = { t: 0 }; sfx.chirp(); }
   // 개미 헬스장: 굴 식량 1개를 쓰고 운동하면 공격력이 오른다
   if (player.wantDeposit && !frozen && scene === 'gym' && Math.abs(player.x - GYM_X) < 130) {
     if (train >= GYM_MAX) toast = { text: '이미 최고로 단련했어요! (공격력 +' + train * 2 + ')', t: 0 };
@@ -648,7 +655,7 @@ function reset() {
   mg = null; OUT.prompt = null; OUT.worm.alive = true; OUT.worm.dead = false; OUT.worm.x = 900; OUT.worm.dt = 0;
   scene = 'cave'; trans = null; ending = null; invOpen = false; toast = null; for (const k in inv) delete inv[k];
   inv.gun = 1; inv.twig = 1;
-  skyInit(); pet.on = false; restFx = null; restBuff = 0;
+  skyInit(); pet.on = false; restFx = null; restBuff = 0; coins = 20; shop = null;
   OUT.parts = []; OUT.flowers.forEach(f => f.cut = false);
   eggs = [
     mkEgg(EX, 1,   0,   1,   true,  null,      null,      560, 1),
@@ -811,6 +818,7 @@ function render(t) {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (scene === 'out') { renderOutside(c, t); return; }
   if (scene === 'gym') { renderGym(c, t); return; }
+  if (scene === 'hotel1' || scene === 'hotel2') { renderHotel(c, t); return; }
   // 카메라 (주인공 알 기준)
   const zoom = t < BURST ? 1 + .08 * Math.pow(t / BURST, 2) : 1.08 - .08 * ease(seg(t, BURST, BURST + 2.6));
   let sx = 0, sy = 0;
@@ -926,6 +934,7 @@ function drawHotel(c, t) {
   // 문과 등불
   c.fillStyle = '#5a3a1e'; c.strokeStyle = '#2a170a'; c.lineWidth = 3; c.beginPath(); c.moveTo(x - 24, y); c.lineTo(x - 24, y - 50); c.arc(x, y - 50, 24, Math.PI, 0); c.lineTo(x + 24, y); c.closePath(); c.fill(); c.stroke();
   c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(x + 13, y - 26, 3.5, 0, 7); c.fill();
+  c.font = `16px ${FONT}`; c.textAlign = 'center'; c.fillStyle = `rgba(255,255,255,${.65 + .3 * Math.sin(t * 3)})`; c.fillText('▼ 들어가기', x, y + 40);
   for (const dx of [-44, 44]) { const fl = .75 + .25 * Math.sin(t * 6 + dx); const gl = c.createRadialGradient(x + dx, y - 58, 2, x + dx, y - 58, 30); gl.addColorStop(0, `rgba(255,214,110,${.6 * fl})`); gl.addColorStop(1, 'rgba(255,214,110,0)'); c.fillStyle = gl; c.fillRect(x + dx - 32, y - 90, 64, 64); c.fillStyle = '#ffd86a'; c.strokeStyle = '#7a4a10'; c.lineWidth = 2; c.beginPath(); c.arc(x + dx, y - 58, 8, 0, 7); c.fill(); c.stroke(); }
   // 나뭇잎 지붕
   c.fillStyle = '#3f9a4a'; c.strokeStyle = '#1f5a2a'; c.lineWidth = 4; c.beginPath(); c.moveTo(x - 128, y - 196); c.quadraticCurveTo(x - 70, y - 300, x, y - 304); c.quadraticCurveTo(x + 70, y - 300, x + 128, y - 196); c.closePath(); c.fill(); c.stroke();
@@ -936,7 +945,7 @@ function drawHotel(c, t) {
   c.fillStyle = '#ff6a8a'; c.beginPath(); c.moveTo(x + 14, y - 346); c.lineTo(x + 56 + Math.sin(t * 4) * 6, y - 334); c.lineTo(x + 14, y - 322); c.closePath(); c.fill();
   // 간판
   c.font = `26px ${FONT}`; c.textAlign = 'center'; c.lineWidth = 6; c.lineJoin = 'round'; c.strokeStyle = '#1f5a2a'; c.strokeText('★ 개미 호텔 ★', x, y - 232); c.fillStyle = '#fff6c4'; c.fillText('★ 개미 호텔 ★', x, y - 232);
-  drawSign(c, x - 150, y + 16, '1박: 꿀 1개', 150);
+  drawSign(c, x - 150, y + 16, '객실 · 상점', 150);
 }
 function drawDoorman(c, t) {
   const fx = HOTEL.x + 82, fy = HOTEL.y + 34, per = (t * .8) % 3.7;
@@ -1233,11 +1242,16 @@ function drawHUD(c, t) {
     if (scene === 'gym') {
       c.font = `22px ${FONT}`; c.fillStyle = `rgba(255,226,160,${.55 + .4 * Math.sin(t * 3)})`; c.textAlign = 'right'; c.fillText('굴로 →', W - 40, GY - 175);
     }
+    if (scene === 'hotel1' || scene === 'hotel2') {
+      c.font = `22px ${FONT}`; c.fillStyle = `rgba(255,236,170,${.6 + .4 * Math.sin(t * 3)})`;
+      c.textAlign = 'left'; c.fillText(scene === 'hotel1' ? '← 나가기' : '← 1층', 40, 120);
+      if (scene === 'hotel1') { c.textAlign = 'right'; c.fillText('2층 →', W - 40, 120); }
+    }
   }
   if (player.active && !ending && !mg) {   // 이름·레벨·식량
-    rr(c, W - 214, 56, 194, 64, 10); c.fillStyle = 'rgba(0,0,0,.5)'; c.fill();
+    rr(c, W - 270, 56, 250, 64, 10); c.fillStyle = 'rgba(0,0,0,.5)'; c.fill();
     c.textAlign = 'right'; c.font = `20px ${FONT}`; c.fillStyle = '#ffe9a8'; c.fillText('Lv.' + level + '  ' + nick, W - 30, 79);
-    c.font = `15px ${FONT}`; c.fillStyle = '#e6c9a0'; c.fillText('굴 식량 ' + food + (train ? '   공격 +' + train * 2 : '') + (restBuff ? '   숙면 ' + restBuff : ''), W - 30, 98);
+    c.font = `13px ${FONT}`; c.fillStyle = '#e6c9a0'; c.fillText('씨앗 ' + coins + ' · 식량 ' + food + (train ? ' · 공격+' + train * 2 : '') + (restBuff ? ' · 숙면' + restBuff : ''), W - 30, 98);
     c.fillStyle = 'rgba(255,255,255,.2)'; c.fillRect(W - 194, 106, 160, 6); c.fillStyle = '#ffd23f'; c.fillRect(W - 194, 106, 160 * xp / xpNeed(level), 6);
   }
   if (scene === 'gym' && player.active && !ending && !mg && !invOpen && !trans && !gym && Math.abs(player.x - GYM_X) < 130) {
@@ -1257,10 +1271,11 @@ function drawHUD(c, t) {
     c.strokeText('지렁이를 무세요!', W / 2, 150); c.fillStyle = '#fff3b0'; c.fillText('지렁이를 무세요!', W / 2, 150);
     c.font = `20px ${FONT}`; c.lineWidth = 5; c.strokeText('F 키로 물기', W / 2, 188); c.fillStyle = '#fff'; c.fillText('F 키로 물기', W / 2, 188); c.globalAlpha = 1;
   }
-  if (nearHotel() && player.active && !ending && !mg && !invOpen && !trans && !restFx && !hs && !cs && !bt) {
-    c.textAlign = 'center'; c.font = `22px ${FONT}`; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineJoin = 'round';
-    const msg = 'G: 개미 호텔에서 쉬기 (꿀 또는 지렁이 고기 1개) — 다음 전투 3번 공격력 +10%';
-    c.strokeText(msg, W / 2, 168); c.fillStyle = (inv.honey > 0 || inv.worm > 0) ? '#fff3b0' : 'rgba(255,255,255,.7)'; c.fillText(msg, W / 2, 168);
+  if (player.active && !ending && !mg && !invOpen && !trans && !restFx && !shop && !hs && !cs && !bt && (scene === 'hotel1' || scene === 'hotel2')) {
+    let msg = '';
+    if (scene === 'hotel1') { if (Math.abs(player.x - SHOP_X) < 130) msg = 'G: 상점 (사고 팔기)'; else if (Math.abs(player.x - DESK_X) < 120) msg = 'G: 프런트 직원에게 말 걸기'; }
+    else if (bedNear() >= 0) msg = 'G: ' + (201 + bedNear()) + '호실에서 푹 쉬기 (다음 전투 3번 공격력 +10%)';
+    if (msg) { c.textAlign = 'center'; c.font = `22px ${FONT}`; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineJoin = 'round'; c.strokeText(msg, W / 2, 168); c.fillStyle = '#fff3b0'; c.fillText(msg, W / 2, 168); }
   }
   if (restFx) {   // 하룻밤 쉬는 화면
     const p = restFx.t, a = Math.min(seg(p, 0, .9), 1 - seg(p, 2.3, 3.1));
@@ -1291,6 +1306,7 @@ function drawHUD(c, t) {
     c.fillStyle = 'rgba(255,255,255,.12)'; c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 3; c.beginPath(); c.arc(dragUI.x0, dragUI.y0, 56, 0, 7); c.fill(); c.stroke();
     c.fillStyle = 'rgba(255,255,255,.55)'; c.beginPath(); c.arc(dragUI.x0 + dx * k, dragUI.y0 + dy * k, 22, 0, 7); c.fill();
   }
+  if (shop) drawShop(c);
   if (invOpen) drawInventory(c);
   if (trans) { const a = trans.p < 1 ? trans.p : 2 - trans.p; c.fillStyle = `rgba(0,0,0,${clamp(a)})`; c.fillRect(0, 0, W, H); }
 }
@@ -1623,6 +1639,7 @@ function faintCheck(side) {
     const xpv = mon.xp;
     L.push({ text: '승리했다!', fn: () => { b.over = 'win'; b.wins++; if (!b.sky) pondWins++; } });
     L.push({ text: '경험치 ' + xpv + ' 획득!', fn: () => { gainXp(xpv); sfx.win(); } });
+    L.push({ text: '씨앗 ' + Math.max(3, Math.round(xpv * .7)) + '개 획득!', fn: () => { coins += Math.max(3, Math.round(xpv * .7)); } });
     L.push({ fn: () => { if (b.sky && mon.drop && Math.random() < mon.drop) addItem('honey'); } });
   } else if (b.team.some(m => !m.fainted && m !== mon)) L.push({ fn: () => { b.needSwitch = true; } });
   else L.push({ text: '눈앞이 캄캄해졌다…', fn: () => { b.over = 'lose'; } });
@@ -1933,7 +1950,7 @@ function drawBT(c, t) {
 /* ================= 1인칭 시점 (굴 밖 풀밭) =================
    V 키로 3인칭과 바꾼다. 마우스(클릭 후)나 손가락 드래그로 둘러보고, 개미산 총을 쏠 수 있다. */
 const FP = { on: false, yaw: 0, pitch: 0, gunCd: 0, recoil: 0, shots: [], targets: [] };
-const busy = () => !!(trans || invOpen || mg || hs || cs || bt || gym || ending || restFx);
+const busy = () => !!(trans || invOpen || mg || hs || cs || bt || gym || ending || restFx || shop);
 function toggleFP() {
   FP.on = !FP.on;
   if (FP.on) { FP.yaw = Math.atan2(player.fdy, player.fdx); FP.pitch = 0; toast = { text: '1인칭: 화면을 클릭하면 마우스로 둘러봐요 · X나 클릭: 개미산 발사 · V: 3인칭', t: 0 }; }
@@ -2233,6 +2250,176 @@ function drawPet(c, t) {
   drawTag(c, pet.x, pet.y - 40, PET_NAME);
 }
 
+/* ================= 개미 호텔 안 (1층 로비·상점 / 2층 객실) =================
+   바깥 호텔의 문으로 들어가면 1층 로비. 왼쪽 상점, 가운데 프런트, 오른쪽 계단(2층). 객실 침대에서 쉬면 다음 전투 3번 공격력 +10%. */
+const SHOP_BUY = [{ id: 'honey', price: 12 }, { id: 'worm', price: 16 }, { id: 'twig', price: 15 }, { id: 'gun', price: 45 }];
+const SELL_PRICE = { shell: 3, '#ff6b8a': 2, '#ffd23f': 2, '#ffffff': 2, '#b78cff': 2, '#ff9a3c': 2, worm: 8, honey: 6, twig: 6, gun: 22 };
+const SHOP_X = 290, DESK_X = 640, BED_X = [215, 505, 795];
+function bedNear() { if (scene !== 'hotel2') return -1; for (let i = 0; i < 3; i++) if (Math.abs(player.x - BED_X[i]) < 120) return i; return -1; }
+
+/* ---------- 상점 ---------- */
+function shopRows() {
+  if (shop.tab === 0) return SHOP_BUY.map(b => ({ id: b.id, price: b.price, own: inv[b.id] || 0 }));
+  return Object.keys(inv).filter(k => inv[k] > 0 && SELL_PRICE[k]).map(k => ({ id: k, price: SELL_PRICE[k], own: inv[k] }));
+}
+function shopSay(m) { shop.msg = m; shop.msgT = 2; }
+function shopDo() {
+  const rows = shopRows(), r = rows[shop.cur]; if (!r) return;
+  if (shop.tab === 0) {
+    if (coins < r.price) { shopSay('씨앗이 모자라요'); sfx.miss(); return; }
+    coins -= r.price; inv[r.id] = (inv[r.id] || 0) + 1; shopSay(ITEMS[r.id].n + ' 구매! (-' + r.price + ')'); sfx.chirp();
+  } else {
+    inv[r.id]--; coins += r.price; shopSay(ITEMS[r.id].n + ' 판매! (+' + r.price + ')'); sfx.tap();
+    const n = shopRows().length; if (shop.cur >= n) shop.cur = Math.max(0, n - 1);
+  }
+}
+function shopKey(e) {
+  const k = e.code, n = shopRows().length;
+  if (k === 'Escape' || k === 'KeyE' || k === 'KeyQ') { shop = null; return; }
+  if (k === 'ArrowLeft' || k === 'KeyA') { shop.tab = 0; shop.cur = 0; shop.top = 0; }
+  else if (k === 'ArrowRight' || k === 'KeyD') { shop.tab = 1; shop.cur = 0; shop.top = 0; }
+  else if (k === 'ArrowUp' || k === 'KeyW') shop.cur = Math.max(0, shop.cur - 1);
+  else if (k === 'ArrowDown' || k === 'KeyS') shop.cur = Math.min(Math.max(0, n - 1), shop.cur + 1);
+  else if ((k === 'Enter' || k === 'Space' || k === 'KeyF' || k === 'KeyG') && !e.repeat) shopDo();
+  if (shop) { if (shop.cur < shop.top) shop.top = shop.cur; if (shop.cur >= shop.top + 5) shop.top = shop.cur - 4; }
+}
+const SHOP_G = { px: 160, py: 50, pw: 640, ph: 450 };
+function shopClick(lx, ly) {
+  const g = SHOP_G, rows = shopRows();
+  if (lx >= g.px + 30 && lx <= g.px + 180 && ly >= g.py + 56 && ly <= g.py + 98) { shop.tab = 0; shop.cur = 0; shop.top = 0; return; }
+  if (lx >= g.px + 190 && lx <= g.px + 340 && ly >= g.py + 56 && ly <= g.py + 98) { shop.tab = 1; shop.cur = 0; shop.top = 0; return; }
+  if (lx >= g.px + g.pw - 170 && lx <= g.px + g.pw - 30 && ly >= g.py + g.ph - 64 && ly <= g.py + g.ph - 20) { shopDo(); return; }
+  if (lx >= g.px + 30 && lx <= g.px + 170 && ly >= g.py + g.ph - 64 && ly <= g.py + g.ph - 20) { shop = null; return; }
+  for (let i = 0; i < 5; i++) {
+    const y = g.py + 112 + i * 40, idx = shop.top + i;
+    if (idx < rows.length && lx >= g.px + 24 && lx <= g.px + g.pw - 24 && ly >= y && ly <= y + 36) { if (shop.cur === idx) shopDo(); else shop.cur = idx; return; }
+  }
+}
+function drawShop(c, dt) {
+  const g = SHOP_G, rows = shopRows();
+  if (shop.msgT > 0) shop.msgT -= 1 / 60;
+  c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(0, 0, W, H);
+  rr(c, g.px, g.py, g.pw, g.ph, 18); c.fillStyle = '#3a2616'; c.fill(); c.strokeStyle = '#c99a5b'; c.lineWidth = 4; c.stroke();
+  c.textAlign = 'center'; c.fillStyle = '#ffe9a8'; c.font = `28px ${FONT}`; c.fillText('개미 호텔 상점', g.px + g.pw / 2, g.py + 40);
+  c.textAlign = 'right'; c.font = `20px ${FONT}`; c.fillStyle = '#ffd86a'; c.fillText('씨앗 ' + coins + '개', g.px + g.pw - 26, g.py + 40);
+  ['사기', '팔기'].forEach((n, i) => {
+    const x = g.px + 30 + i * 160; rr(c, x, g.py + 56, 150, 42, 10); c.fillStyle = shop.tab === i ? '#c99a5b' : '#2a1a0c'; c.fill(); c.strokeStyle = '#c99a5b'; c.lineWidth = 2; c.stroke();
+    c.textAlign = 'center'; c.font = `22px ${FONT}`; c.fillStyle = shop.tab === i ? '#3a2213' : '#e6c9a0'; c.fillText(n, x + 75, g.py + 86);
+  });
+  if (!rows.length) { c.textAlign = 'center'; c.font = `20px ${FONT}`; c.fillStyle = 'rgba(255,240,200,.7)'; c.fillText(shop.tab ? '팔 수 있는 물건이 없어요' : '', g.px + g.pw / 2, g.py + 200); }
+  for (let i = 0; i < 5; i++) {
+    const idx = shop.top + i, r = rows[idx]; if (!r) break;
+    const y = g.py + 112 + i * 40, sel = idx === shop.cur;
+    rr(c, g.px + 24, y, g.pw - 48, 36, 8); c.fillStyle = sel ? 'rgba(255,226,122,.2)' : 'rgba(0,0,0,.2)'; c.fill(); if (sel) { c.strokeStyle = '#ffd37a'; c.lineWidth = 3; c.stroke(); }
+    drawItemIcon(c, r.id, g.px + 58, y + 20, .7);
+    c.textAlign = 'left'; c.font = `20px ${FONT}`; c.fillStyle = '#fff'; c.fillText(ITEMS[r.id].n, g.px + 90, y + 25);
+    c.textAlign = 'right'; c.font = `16px ${FONT}`; c.fillStyle = '#c9b48a'; c.fillText('보유 ' + r.own, g.px + g.pw - 190, y + 24);
+    c.font = `20px ${FONT}`; c.fillStyle = shop.tab === 0 && coins < r.price ? '#ff8a7a' : '#ffd86a'; c.fillText('씨앗 ' + r.price, g.px + g.pw - 40, y + 25);
+  }
+  rr(c, g.px + 30, g.py + g.ph - 64, 140, 44, 10); c.fillStyle = '#5a4a3a'; c.fill();
+  c.textAlign = 'center'; c.font = `20px ${FONT}`; c.fillStyle = '#fff'; c.fillText('닫기 (Esc)', g.px + 100, g.py + g.ph - 35);
+  rr(c, g.px + g.pw - 170, g.py + g.ph - 64, 140, 44, 10); c.fillStyle = '#c99a5b'; c.fill();
+  c.fillStyle = '#3a2213'; c.fillText(shop.tab === 0 ? '사기 (F)' : '팔기 (F)', g.px + g.pw - 100, g.py + g.ph - 35);
+  c.font = `15px ${FONT}`; c.fillStyle = 'rgba(255,240,200,.75)'; c.fillText('←→: 사기/팔기   ↑↓: 고르기   F/Enter: 확인   클릭도 돼요', g.px + g.pw / 2, g.py + g.ph - 84);
+  if (shop.msg && shop.msgT > 0) { c.font = `22px ${FONT}`; c.fillStyle = '#9fffb0'; c.fillText(shop.msg, g.px + g.pw / 2, g.py + g.ph - 114); }
+}
+
+/* ---------- 호텔 안 그리기 ---------- */
+function drawSideActors(c, t) {
+  for (const e of eggs) if (!e.main && e.follow) {
+    const fy = e.fy - Math.abs(Math.sin(e.leg * .5)) * 3 * e.walk, per = (t * .8 + e.x) % 3.7;
+    c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(e.fx, e.fy + 39, 40, 7, 0, 0, 7); c.fill();
+    drawAnt(c, e.fx, fy, 1.3 * e.sc, { wig: t, leg: e.leg, walk: e.walk, flip: e.ffl, bite: 0, squash: 0, lx: 0, ly: 0, open: t < cheerUntil ? .9 : 0, spread: 0, perk: 0, blink: per < .22 ? Math.sin(per / .22 * 3.14) : 0, c0: e.c0, c1: e.c1 });
+    drawTag(c, e.fx, fy - 80, e.name);
+  }
+  const per2 = (t * .9) % 3.7;
+  const ay = player.y - player.h - Math.abs(Math.sin(player.leg * .5)) * 3 * player.walk + Math.sin(t * 3) * 1.2 * (1 - player.walk);
+  c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(player.x, player.y + 55, 52 * (1 - player.h / 200), 9, 0, 0, 7); c.fill();
+  drawAnt(c, player.x, ay, 1.3, { wig: t, leg: player.leg, walk: player.walk, bite: 0, flip: player.dir, squash: 0, lx: 0, ly: 0, open: 0, spread: player.h > 0 ? 1 : 0, perk: 0, blink: per2 < .22 ? Math.sin(per2 / .22 * 3.14) : 0 });
+  drawTag(c, player.x, ay - 95);
+  drawPet(c, t); drawDrops(c, 0, t);
+}
+function hotelWall(c, t) {
+  const g = c.createLinearGradient(0, 0, 0, GY); g.addColorStop(0, '#f1dfb4'); g.addColorStop(1, '#dcc48e'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.fillStyle = 'rgba(255,255,255,.16)'; for (let x = 0; x < W; x += 52) c.fillRect(x, 0, 24, GY);
+  c.fillStyle = '#8a5a30'; c.fillRect(0, GY - 150, W, 134);                         // 아래쪽 벽(나무 판)
+  c.strokeStyle = 'rgba(40,20,8,.45)'; c.lineWidth = 3; for (let x = 20; x < W; x += 110) { c.strokeRect(x, GY - 138, 90, 106); }
+  c.fillStyle = '#c79a5d'; c.fillRect(0, GY - 156, W, 8);
+  c.fillStyle = '#6b2a30'; c.fillRect(0, GY - 16, W, H);                              // 카펫
+  c.fillStyle = '#d9a83a'; c.fillRect(0, GY - 16, W, 5);
+  c.fillStyle = 'rgba(217,168,58,.25)'; for (let x = 0; x < W + 60; x += 60) { c.beginPath(); c.moveTo(x, GY + 14); c.lineTo(x + 30, GY + 44); c.lineTo(x, GY + 74); c.lineTo(x - 30, GY + 44); c.closePath(); c.fill(); }
+  // 샹들리에
+  c.strokeStyle = '#4a3418'; c.lineWidth = 3; c.beginPath(); c.moveTo(480, 0); c.lineTo(480, 60); c.stroke();
+  const gl = c.createRadialGradient(480, 86, 6, 480, 86, 150); gl.addColorStop(0, 'rgba(255,236,160,.6)'); gl.addColorStop(1, 'rgba(255,236,160,0)'); c.fillStyle = gl; c.fillRect(300, -60, 360, 300);
+  c.strokeStyle = '#b8892a'; c.lineWidth = 5; c.beginPath(); c.ellipse(480, 70, 70, 14, 0, 0, 7); c.stroke();
+  for (let i = -2; i <= 2; i++) { c.fillStyle = `rgba(255,${230 + Math.sin(t * 5 + i) * 15 | 0},150,1)`; c.beginPath(); c.arc(480 + i * 32, 62 + Math.abs(i) * 3, 7, 0, 7); c.fill(); }
+}
+function drawPlant(c, x) {
+  c.fillStyle = '#7a4a24'; c.strokeStyle = '#3a2213'; c.lineWidth = 3; c.beginPath(); c.moveTo(x - 24, GY - 56); c.lineTo(x + 24, GY - 56); c.lineTo(x + 16, GY - 12); c.lineTo(x - 16, GY - 12); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#3f9a4a'; c.strokeStyle = '#1f5a2a'; for (const [dx, dy, r] of [[-22, -92, 26], [20, -96, 28], [0, -116, 30]]) { c.beginPath(); c.ellipse(x + dx, GY + dy, r * .55, r, dx * .02, 0, 7); c.fill(); c.stroke(); }
+}
+function renderHotel(c, t) {
+  hotelWall(c, t);
+  if (scene === 'hotel1') {
+    // 나가는 문 (왼쪽)
+    c.fillStyle = '#5a3a1e'; c.strokeStyle = '#2a170a'; c.lineWidth = 4; c.fillRect(0, GY - 190, 80, 176); c.strokeRect(0, GY - 190, 80, 176);
+    c.fillStyle = 'rgba(190,230,255,.55)'; c.fillRect(8, GY - 178, 56, 100); c.strokeRect(8, GY - 178, 56, 100);
+    c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(70, GY - 90, 4, 0, 7); c.fill();
+    // 상점: 뒤쪽 선반 + 간판 + 주인 + 판매대
+    c.fillStyle = '#7a4a24'; c.strokeStyle = '#3a2213'; c.lineWidth = 3; for (const sy of [GY - 205, GY - 150]) { c.fillRect(150, sy, 250, 10); c.strokeRect(150, sy, 250, 10); }
+    [['honey', 180, GY - 224], ['worm', 240, GY - 215], ['twig', 300, GY - 218], ['gun', 360, GY - 220], ['#ff6b8a', 190, GY - 168], ['shell', 250, GY - 166], ['#ffd23f', 310, GY - 168], ['bubble', 370, GY - 170]].forEach(([id, x, y]) => drawItemIcon(c, id, x, y, .85));
+    c.strokeStyle = '#4a3418'; c.lineWidth = 3; c.beginPath(); c.moveTo(230, GY - 272); c.lineTo(230, GY - 250); c.moveTo(320, GY - 272); c.lineTo(320, GY - 250); c.stroke();
+    c.fillStyle = '#a8793f'; c.strokeStyle = '#4a2f16'; c.lineWidth = 3; c.fillRect(215, GY - 250, 120, 38); c.strokeRect(215, GY - 250, 120, 38);
+    c.fillStyle = '#3a2213'; c.font = `24px ${FONT}`; c.textAlign = 'center'; c.fillText('상 점', 275, GY - 222);
+    drawAnt(c, SHOP_X + 10, GY - 62 + Math.sin(t * 2) * 1.2, 1.15, { wig: t, leg: 0, walk: 0, bite: 0, flip: 1, lx: 0, ly: 0, open: 0, spread: 0, perk: 0, squash: 0, blink: 0, c0: '#7a9a4a', c1: '#3f5a28' });
+    c.fillStyle = '#7a4a24'; c.strokeStyle = '#3a2213'; c.lineWidth = 3; c.fillRect(150, GY - 70, 280, 56); c.strokeRect(150, GY - 70, 280, 56);
+    c.fillStyle = '#c79a5d'; c.fillRect(144, GY - 78, 292, 10); c.strokeRect(144, GY - 78, 292, 10);
+    // 프런트(접수대) + 직원
+    c.fillStyle = '#e6d3a0'; c.strokeStyle = '#6b4a28'; c.lineWidth = 3; c.fillRect(560, GY - 215, 180, 80); c.strokeRect(560, GY - 215, 180, 80);
+    for (let i = 0; i < 6; i++) { const kx = 584 + (i % 3) * 56, ky = GY - 195 + Math.floor(i / 3) * 34; c.fillStyle = '#d9a83a'; c.beginPath(); c.arc(kx, ky, 8, 0, 7); c.fill(); c.strokeStyle = '#6b4a28'; c.stroke(); c.fillStyle = '#3a2213'; c.font = `11px ${FONT}`; c.fillText(String(101 + i), kx, ky + 4); }
+    c.fillStyle = '#a8793f'; c.strokeStyle = '#4a2f16'; c.fillRect(580, GY - 255, 120, 34); c.strokeRect(580, GY - 255, 120, 34); c.fillStyle = '#3a2213'; c.font = `20px ${FONT}`; c.fillText('프런트', 640, GY - 231);
+    drawAnt(c, DESK_X + 10, GY - 62 + Math.sin(t * 2 + 1) * 1.2, 1.15, { wig: t, leg: 0, walk: 0, bite: 0, flip: -1, lx: 0, ly: 0, open: 0, spread: 0, perk: 0, squash: 0, blink: 0, c0: '#4a6a9a', c1: '#243a5a' });
+    c.fillStyle = '#5a3a1e'; c.strokeStyle = '#2a170a'; c.lineWidth = 3; c.fillRect(540, GY - 70, 230, 56); c.strokeRect(540, GY - 70, 230, 56);
+    c.fillStyle = '#c79a5d'; c.fillRect(534, GY - 78, 242, 10); c.strokeRect(534, GY - 78, 242, 10);
+    c.fillStyle = '#d9a83a'; c.beginPath(); c.arc(580, GY - 80, 12, Math.PI, 0); c.fill(); c.fillRect(566, GY - 82, 28, 4);
+    // 화분, 2층 계단
+    drawPlant(c, 470); drawPlant(c, 800);
+    for (let i = 0; i < 6; i++) { c.fillStyle = i % 2 ? '#a8793f' : '#c79a5d'; c.strokeStyle = '#4a2f16'; c.lineWidth = 2; const sx = 850 + i * 20, sy = GY - 16 - (i + 1) * 24; c.fillRect(sx, sy, 130 - i * 20, 24); c.strokeRect(sx, sy, 130 - i * 20, 24); }
+    c.strokeStyle = '#4a2f16'; c.lineWidth = 5; c.beginPath(); c.moveTo(846, GY - 90); c.lineTo(960, GY - 190); c.stroke();
+    c.fillStyle = '#a8793f'; c.fillRect(870, GY - 250, 76, 30); c.strokeStyle = '#4a2f16'; c.lineWidth = 3; c.strokeRect(870, GY - 250, 76, 30); c.fillStyle = '#3a2213'; c.font = `18px ${FONT}`; c.fillText('▲ 2층', 908, GY - 229);
+  } else {
+    // 2층 복도: 객실 3개를 단면으로 보여 준다
+    const cols = [['#cfe0f0', '#7a9ac0'], ['#f0d8d8', '#c07a8a'], ['#d8f0d8', '#7ac08a']];
+    for (let i = 0; i < 3; i++) {
+      const x0 = 80 + i * 290, w = 270, [wall, blanket] = cols[i];
+      c.fillStyle = wall; c.strokeStyle = '#6b4a28'; c.lineWidth = 4; c.fillRect(x0, GY - 280, w, 262); c.strokeRect(x0, GY - 280, w, 262);
+      c.fillStyle = 'rgba(0,0,0,.08)'; c.fillRect(x0, GY - 60, w, 42);
+      // 창문과 달
+      c.fillStyle = '#23305a'; c.fillRect(x0 + w - 100, GY - 250, 70, 80); c.strokeStyle = '#6b4a28'; c.lineWidth = 4; c.strokeRect(x0 + w - 100, GY - 250, 70, 80);
+      c.fillStyle = '#fff3c0'; c.beginPath(); c.arc(x0 + w - 70, GY - 218, 12, 0, 7); c.fill(); c.beginPath(); c.moveTo(x0 + w - 65, GY - 250); c.lineTo(x0 + w - 65, GY - 170); c.stroke();
+      // 침대
+      const bx = BED_X[i];
+      c.fillStyle = '#7a4a24'; c.strokeStyle = '#3a2213'; c.lineWidth = 3; c.fillRect(bx - 92, GY - 124, 14, 108); c.strokeRect(bx - 92, GY - 124, 14, 108);
+      c.fillRect(bx - 92, GY - 46, 180, 28); c.strokeRect(bx - 92, GY - 46, 180, 28);
+      c.fillStyle = '#fffaf0'; rr(c, bx - 80, GY - 66, 164, 24, 8); c.fill(); c.stroke();
+      c.fillStyle = blanket; rr(c, bx - 30, GY - 70, 112, 28, 8); c.fill(); c.stroke();
+      c.fillStyle = '#ffffff'; rr(c, bx - 76, GY - 82, 42, 20, 9); c.fill(); c.stroke();
+      // 협탁과 스탠드
+      c.fillStyle = '#7a4a24'; c.fillRect(bx + 100, GY - 50, 34, 32); c.strokeRect(bx + 100, GY - 50, 34, 32);
+      const lg = c.createRadialGradient(bx + 117, GY - 80, 3, bx + 117, GY - 80, 56); lg.addColorStop(0, 'rgba(255,225,140,.6)'); lg.addColorStop(1, 'rgba(255,225,140,0)'); c.fillStyle = lg; c.fillRect(bx + 60, GY - 136, 112, 112);
+      c.fillStyle = '#ffe28a'; c.beginPath(); c.moveTo(bx + 105, GY - 50); c.lineTo(bx + 129, GY - 50); c.lineTo(bx + 123, GY - 82); c.lineTo(bx + 111, GY - 82); c.closePath(); c.fill(); c.stroke();
+      // 호수 팻말
+      c.fillStyle = '#a8793f'; c.strokeStyle = '#4a2f16'; c.lineWidth = 3; c.fillRect(x0 + w / 2 - 38, GY - 262, 76, 28); c.strokeRect(x0 + w / 2 - 38, GY - 262, 76, 28);
+      c.fillStyle = '#3a2213'; c.font = `18px ${FONT}`; c.textAlign = 'center'; c.fillText((201 + i) + '호', x0 + w / 2, GY - 242);
+    }
+    // 왼쪽 계단 입구
+    c.fillStyle = '#2a170a'; c.fillRect(0, GY - 190, 70, 176); c.fillStyle = '#a8793f'; c.fillRect(6, GY - 250, 62, 30); c.strokeStyle = '#4a2f16'; c.lineWidth = 3; c.strokeRect(6, GY - 250, 62, 30); c.fillStyle = '#3a2213'; c.font = `17px ${FONT}`; c.textAlign = 'center'; c.fillText('▼ 1층', 37, GY - 229);
+  }
+  drawSideActors(c, t);
+  const v = c.createRadialGradient(W / 2, H / 2, 260, W / 2, H / 2, 640); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)'); c.fillStyle = v; c.fillRect(0, 0, W, H);
+  drawHUD(c, t);
+}
+
 /* ---------- 저장 / 이어하기 ----------
    브라우저(localStorage)에 자동 저장한다. 파일을 업데이트해도 같은 브라우저에서는 그대로 남는다.
    저장 데이터에 버전(v)을 두고, 읽을 때 값을 검사해서 새로 생긴 항목은 기본값으로, 사라진 항목은 버린다. */
@@ -2249,7 +2436,7 @@ function loadSave(n) {
     const raw = localStorage.getItem(SLOT_KEY(n)); if (!raw) return null;
     const d = JSON.parse(raw); if (!d || typeof d !== 'object') return null;
     const num = (v, a, b, def) => (typeof v === 'number' && isFinite(v)) ? Math.min(b, Math.max(a, Math.floor(v))) : def;
-    const o = { nick: typeof d.nick === 'string' && d.nick.trim() ? d.nick.slice(0, 8) : '개미', level: num(d.level, 1, 99, 1), xp: num(d.xp, 0, 1e6, 0), food: num(d.food, 0, 1e6, 0), inv: {}, flowers: [], worm: !!d.worm, pond: num(d.pond, 0, 9999, 0), train: num(d.train, 0, 15, 0), kit: !!d.kit };
+    const o = { nick: typeof d.nick === 'string' && d.nick.trim() ? d.nick.slice(0, 8) : '개미', level: num(d.level, 1, 99, 1), xp: num(d.xp, 0, 1e6, 0), food: num(d.food, 0, 1e6, 0), inv: {}, flowers: [], worm: !!d.worm, pond: num(d.pond, 0, 9999, 0), train: num(d.train, 0, 15, 0), kit: !!d.kit, coins: num(d.coins, 0, 1e7, 20) };
     if (d.inv && typeof d.inv === 'object') for (const k in d.inv) if (ITEMS[k]) { const n = num(d.inv[k], 0, 9999, 0); if (n > 0) o.inv[k] = n; }
     if (Array.isArray(d.flowers) && d.v >= 3) o.flowers = d.flowers.filter(i => Number.isInteger(i) && i >= 0 && i < OUT.flowers.length);
     return o;
@@ -2258,7 +2445,7 @@ function loadSave(n) {
 function saveGame() {
   if (state !== 'play' || ending || !player.active) return;
   const flowers = []; OUT.flowers.forEach((f, i) => { if (f.cut) flowers.push(i); });
-  const data = JSON.stringify({ v: SAVE_VER, nick, level, xp, food, inv, flowers, worm: wormEver ? 1 : 0, pond: pondWins, train, kit: 1 });
+  const data = JSON.stringify({ v: SAVE_VER, nick, level, xp, food, inv, flowers, worm: wormEver ? 1 : 0, pond: pondWins, train, kit: 1, coins });
   if (data === lastSave) return;
   try { localStorage.setItem(SLOT_KEY(slot), data); lastSave = data; } catch (e) {}
 }
@@ -2282,7 +2469,7 @@ function continueGame(n) {
   nick = sv.nick; resumed = true;
   for (let i = 0; i < 20 * 30; i++) { t += 1 / 30; update(1 / 30, t); }   // 오프닝 컷신은 건너뛰고 20초 지점에서 이어감
   for (const e of events) e.done = true;
-  level = sv.level; xp = sv.xp; food = sv.food; wormEver = sv.worm; pondWins = sv.pond; train = sv.train;
+  level = sv.level; xp = sv.xp; food = sv.food; wormEver = sv.worm; pondWins = sv.pond; train = sv.train; coins = sv.coins;
   for (const k in inv) delete inv[k];
   Object.assign(inv, sv.inv);
   if (!sv.kit) { inv.gun = (inv.gun || 0) + 1; inv.twig = (inv.twig || 0) + 1; }   // 예전 저장: 새 도구를 한 번 지급
@@ -2401,6 +2588,7 @@ addEventListener('keydown', e => {
   if (bt) { btKey(e); return; }
   if (cs) { csKey(e); return; }
   if (hs) { hsKey(e); return; }
+  if (shop) { shopKey(e); return; }
   if (mg) { mgKey(e); return; }
   if (invOpen && invKey(e)) return;
   if (e.code === 'KeyV' && !e.repeat && scene === 'out' && player.active && !busy()) { toggleFP(); return; }
@@ -2409,9 +2597,13 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyF' && !e.repeat) player.wantBite = true;
   if (e.code === 'KeyG' && !e.repeat) player.wantDeposit = true;
   if (e.code === 'Space' && !e.repeat) player.wantJump = true;
-  if (e.code === 'KeyE' && !e.repeat && player.active && !trans && !ending && !mg && !hs && !cs && !bt) invOpen = !invOpen;
+  if (e.code === 'KeyE' && !e.repeat && player.active && !trans && !ending && !mg && !hs && !cs && !bt && !shop) invOpen = !invOpen;
   if (e.code === 'Escape') invOpen = false;
   keys[e.code] = true;
+});
+addEventListener('pointerdown', e => {
+  if (state !== 'play' || !shop) return;
+  const r = cv.getBoundingClientRect(); shopClick((e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H);
 });
 addEventListener('pointerdown', e => {
   if (state !== 'play' || !invOpen) return;
