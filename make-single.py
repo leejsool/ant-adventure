@@ -7,7 +7,7 @@
   2) ../ant-adventure.zip : 인터넷에 올리는 판 (index.html + 앱 설정 + 아이콘 + 서비스 워커)
 항상 index.html 기준이라 세 가지가 서로 어긋나지 않는다.
 """
-import re, pathlib, zipfile
+import re, pathlib, zipfile, base64
 
 root = pathlib.Path(__file__).resolve().parent
 import datetime
@@ -22,11 +22,16 @@ print('버전 표시:', stamp)
 drop_lines = ('rel="manifest"', 'name="theme-color"', 'rel="apple-touch-icon"', 'apple-mobile-web-app')
 text = '\n'.join(ln for ln in src.split('\n') if not any(k in ln for k in drop_lines))
 text, n = re.subn(r"try \{ if \('serviceWorker' in navigator.*?\} catch \(e\) \{\}\n", '', text, flags=re.S)
+# 호텔 그림(assets)을 파일 안에 넣어, 파일 하나만으로도 그림이 나오게 한다
+arts = sorted((root / 'assets').glob('*.webp'))
+NL = chr(10)
+js = 'const ART_DATA = {' + ','.join('"%s":"data:image/webp;base64,%s"' % (a.stem, base64.b64encode(a.read_bytes()).decode()) for a in arts) + '};' + NL
+text = text.replace('"use strict";', '"use strict";' + NL + js, 1)
 (root / 'ant-adventure.html').write_text(text, encoding='utf-8')
 print('ant-adventure.html 만듦 (서비스 워커 줄 제거: %d개)' % n)
 
-# 2) 올리기용 zip (파일 6개)
-files = ['index.html', 'manifest.webmanifest', 'sw.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']
+# 2) 올리기용 zip (파일 + assets 그림)
+files = ['index.html', 'manifest.webmanifest', 'sw.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'] + ['assets/' + a.name for a in arts]
 zpath = root.parent / 'ant-adventure.zip'
 with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED) as z:
     for f in files:
