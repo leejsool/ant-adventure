@@ -71,7 +71,7 @@ const EX = 480, GY = 455;          // 알 중심 x, 땅 y
 const BURST = 7.2;                 // 알이 터지는 시각
 const END = 18.5;                    // 제목이 뜨는 시각
 const FONT = '"Jua","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
-const BUILD = '2026-11-24 19:53';   // make-single.py가 만든 시각으로 바꿔 넣는다 (어느 버전을 열었는지 시작 화면에서 확인용)
+const BUILD = '2026-11-25 07:30';   // make-single.py가 만든 시각으로 바꿔 넣는다 (어느 버전을 열었는지 시작 화면에서 확인용)
 
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
@@ -364,7 +364,7 @@ const keys = {};
 const player = { active: false, x: 0, y: 0, dir: 1, fdx: 1, fdy: 0, leg: 0, walk: 0, biteT: 0, wantBite: false, wantJump: false, h: 0, vh: 0 };
 const PL_START = 10.4, BITE_DUR = .32;
 const WORLD = 4300, GTOP = 455, OUTMAX = 3250;
-let scene = 'cave', trans = null, invOpen = false, toast = null, ending = null, mg = null, hs = null, cs = null, bt = null, wormEver = false, pondWins = 0, train = 0, gym = null, homeCd = 0;
+let scene = 'cave', trans = null, invOpen = false, toast = null, ending = null, mg = null, hs = null, cs = null, bt = null, wormEver = false, pondWins = 0, train = 0, gym = null, homeCd = 0, restFx = null, restBuff = 0;
 // 알의 시간: 물려서 죽은 알은 터진 상태로, 엔딩 중에는 다른 알들도 멈춘다
 function eggLt(e, t) {
   if (e.dead) return BURST + (t - e.deadT);
@@ -506,7 +506,7 @@ function updatePlayer(dt, t) {
   OUT.parts = OUT.parts.filter(p => p.age < 1.6);
   const m = eggs[0];
   if (t < PL_START) return;
-  const gyAnt = m.gy - 38, frozen = !!trans || invOpen || !!ending || !!mg || !!hs || !!cs || !!bt || !!gym;
+  const gyAnt = m.gy - 38, frozen = !!trans || invOpen || !!ending || !!mg || !!hs || !!cs || !!bt || !!gym || !!restFx;
   if (!player.active) { player.active = true; player.x = m.land; player.y = gyAnt; player.dir = 1; }
   let ax = frozen ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
   let ay = frozen ? 0 : (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
@@ -561,6 +561,7 @@ function updatePlayer(dt, t) {
     if (mv) { e.leg += dt * 15; e.ffl = dx > 0 ? 1 : -1; } else e.ffl = player.x >= e.fx ? 1 : -1;
   });
   updatePet(dt, t, run, frozen);
+  if (restFx) { restFx.t += dt; if (restFx.t >= 3.1) { restFx = null; restBuff = 3; toast = { text: '푹 쉬었다! 다음 전투 3번 동안 공격력 +10%', t: 0 }; sfx.levelup(); } }
   if (scene === 'out' && !frozen) updateSky(dt, t);
   // 점프
   if (player.wantJump && player.h === 0 && player.vh === 0 && !frozen) { player.vh = 480; sfx.jump(); }
@@ -601,6 +602,12 @@ function updatePlayer(dt, t) {
     if ((inv.worm || 0) > 0) { inv.worm--; food++; cheerUntil = t + 1.6; toast = { text: '+1 굴 식량 (' + food + ')', t: 0 }; sfx.chirp(); }
     else toast = { text: '지렁이 고기가 없어요', t: 0 };
   }
+  // 개미 호텔: 꿀(또는 지렁이 고기) 1개로 하룻밤 푹 쉰다
+  if (player.wantDeposit && !frozen && nearHotel()) {
+    if (inv.honey > 0) { inv.honey--; restFx = { t: 0 }; sfx.chirp(); }
+    else if (inv.worm > 0) { inv.worm--; restFx = { t: 0 }; sfx.chirp(); }
+    else toast = { text: '숙박비가 필요해요 (꿀이나 지렁이 고기 1개)', t: 0 };
+  }
   // 개미 헬스장: 굴 식량 1개를 쓰고 운동하면 공격력이 오른다
   if (player.wantDeposit && !frozen && scene === 'gym' && Math.abs(player.x - GYM_X) < 130) {
     if (train >= GYM_MAX) toast = { text: '이미 최고로 단련했어요! (공격력 +' + train * 2 + ')', t: 0 };
@@ -635,7 +642,7 @@ function reset() {
   mg = null; OUT.prompt = null; OUT.worm.alive = true; OUT.worm.dead = false; OUT.worm.x = 900; OUT.worm.dt = 0;
   scene = 'cave'; trans = null; ending = null; invOpen = false; toast = null; for (const k in inv) delete inv[k];
   inv.gun = 1; inv.twig = 1;
-  skyInit(); pet.on = false;
+  skyInit(); pet.on = false; restFx = null; restBuff = 0;
   OUT.parts = []; OUT.flowers.forEach(f => f.cut = false);
   eggs = [
     mkEgg(EX, 1,   0,   1,   true,  null,      null,      560, 1),
@@ -858,6 +865,7 @@ const HOME = { x: 260, y: 1650 }, HOLE = { x: 260, y: 1730 }, OUT_START = { x: 2
 const WORM_POS = { x: 900, y: 1540 };
 const POND = { x: 2500, y: 1150, rx: 520, ry: 290 };
 const REED = { x: 3080, y: 360 };
+const HOTEL = { x: 1250, y: 1240 };   // 개미 호텔 (건물 앞쪽 바닥 가운데)
 const PATHS = [
   [[260, 1800], [520, 1730], [900, 1640], [1300, 1500], [1800, 1350], [2000, 1330]],
   [[1800, 1350], [2000, 900], [2400, 640], [2800, 470], [3080, 430]],
@@ -872,7 +880,7 @@ function inPond(x, fy, m) { return ((x - POND.x) / (POND.rx * m)) ** 2 + ((fy - 
 const OBST = [];
 {
   const r = rng(77);
-  const bad = (x, y) => Math.hypot(x - HOME.x, y - HOME.y) < 260 || Math.hypot(x - WORM_POS.x, y - WORM_POS.y) < 320 || Math.hypot(x - REED.x, y - REED.y) < 340 || Math.abs(x - GATE_X) < 90 || inPond(x, y, 1.18) || nearPath(x, y, 120);
+  const bad = (x, y) => Math.hypot(x - HOME.x, y - HOME.y) < 260 || Math.hypot(x - WORM_POS.x, y - WORM_POS.y) < 320 || Math.hypot(x - REED.x, y - REED.y) < 340 || Math.hypot(x - HOTEL.x, y - HOTEL.y) < 300 || Math.abs(x - GATE_X) < 90 || inPond(x, y, 1.18) || nearPath(x, y, 120);
   for (let i = 0; i < 400 && OBST.length < 72; i++) { const x = 80 + r() * (OW - 160), y = 170 + r() * (OH - 320); if (bad(x, y)) continue; const tree = r() > .35; OBST.push({ x, y, r: tree ? 30 : 24, k: tree ? 'tree' : 'rock', s: .85 + r() * .4 }); }
 }
 {
@@ -880,7 +888,7 @@ const OBST = [];
   for (let i = 0; i < 60; i++) {
     let x, y, tries = 0;
     do { x = 120 + rf() * (OW - 240); y = 200 + rf() * (OH - 360); tries++; }
-    while (tries < 60 && (OBST.some(o => Math.hypot(o.x - x, o.y - y) < o.r + 24) || inPond(x, y, 1.12) || Math.hypot(x - HOME.x, y - HOME.y) < 200 || Math.abs(x - GATE_X) < 80 || Math.hypot(x - REED.x, y - REED.y) < 200));
+    while (tries < 60 && (OBST.some(o => Math.hypot(o.x - x, o.y - y) < o.r + 24) || inPond(x, y, 1.12) || Math.hypot(x - HOME.x, y - HOME.y) < 200 || Math.abs(x - GATE_X) < 80 || Math.hypot(x - REED.x, y - REED.y) < 200 || Math.hypot(x - HOTEL.x, y - HOTEL.y) < 240));
     OUT.flowers.push({ x, y, h: 48 + rf() * 34, c: ['#ff6b8a', '#ffd23f', '#ffffff', '#b78cff', '#ff9a3c'][i % 5], cut: false, p: rf() * 6.28 });
   }
 }
@@ -889,9 +897,46 @@ function outBlocked(x, fy) {
   if (((x - HOME.x) / 135) ** 2 + ((fy - HOME.y) / 68) ** 2 < 1) return true;
   for (const o of OBST) if (Math.hypot(x - o.x, fy - o.y) < o.r + 14) return true;
   if (Math.hypot(x - REED.x, fy - REED.y) < 90) return true;
+  if (Math.abs(x - HOTEL.x) < 118 && fy > HOTEL.y - 40 && fy < HOTEL.y + 16) return true;   // 호텔 건물
   return false;
 }
 
+function nearHotel() { return scene === 'out' && Math.hypot(player.x - HOTEL.x, player.y + 55 - (HOTEL.y + 50)) < 130; }
+function drawHotel(c, t) {
+  const x = HOTEL.x, y = HOTEL.y;
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(x + 16, y + 8, 160, 28, 0, 0, 7); c.fill();
+  const g = c.createLinearGradient(x - 105, 0, x + 105, 0); g.addColorStop(0, '#a5763f'); g.addColorStop(.5, '#c79a5d'); g.addColorStop(1, '#8d6232');
+  c.fillStyle = g; c.strokeStyle = '#4a2f16'; c.lineWidth = 4; rr(c, x - 105, y - 200, 210, 200, 10); c.fill(); c.stroke();
+  c.strokeStyle = 'rgba(60,35,15,.35)'; c.lineWidth = 2; for (let yy = y - 180; yy < y; yy += 22) { c.beginPath(); c.moveTo(x - 105, yy); c.lineTo(x + 105, yy); c.stroke(); }
+  c.fillStyle = '#7a5a3a'; for (const by of [y - 140, y - 72]) c.fillRect(x - 108, by, 216, 8);
+  const rows = [y - 172, y - 104, y - 40];
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) {
+    if (r === 2 && k === 1) continue;
+    const wx = x - 60 + k * 60, wy = rows[r], lit = (r * 3 + k + Math.floor(t * .5)) % 4 !== 0;
+    if (lit) { const gl = c.createRadialGradient(wx, wy, 2, wx, wy, 34); gl.addColorStop(0, 'rgba(255,230,140,.55)'); gl.addColorStop(1, 'rgba(255,230,140,0)'); c.fillStyle = gl; c.fillRect(wx - 36, wy - 36, 72, 72); }
+    c.fillStyle = lit ? '#ffe28a' : '#3a2a1a'; c.strokeStyle = '#4a2f16'; c.lineWidth = 3; c.beginPath(); c.arc(wx, wy, 15, 0, 7); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(wx - 15, wy); c.lineTo(wx + 15, wy); c.moveTo(wx, wy - 15); c.lineTo(wx, wy + 15); c.stroke();
+  }
+  // 문과 등불
+  c.fillStyle = '#5a3a1e'; c.strokeStyle = '#2a170a'; c.lineWidth = 3; c.beginPath(); c.moveTo(x - 24, y); c.lineTo(x - 24, y - 50); c.arc(x, y - 50, 24, Math.PI, 0); c.lineTo(x + 24, y); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#ffd23f'; c.beginPath(); c.arc(x + 13, y - 26, 3.5, 0, 7); c.fill();
+  for (const dx of [-44, 44]) { const fl = .75 + .25 * Math.sin(t * 6 + dx); const gl = c.createRadialGradient(x + dx, y - 58, 2, x + dx, y - 58, 30); gl.addColorStop(0, `rgba(255,214,110,${.6 * fl})`); gl.addColorStop(1, 'rgba(255,214,110,0)'); c.fillStyle = gl; c.fillRect(x + dx - 32, y - 90, 64, 64); c.fillStyle = '#ffd86a'; c.strokeStyle = '#7a4a10'; c.lineWidth = 2; c.beginPath(); c.arc(x + dx, y - 58, 8, 0, 7); c.fill(); c.stroke(); }
+  // 나뭇잎 지붕
+  c.fillStyle = '#3f9a4a'; c.strokeStyle = '#1f5a2a'; c.lineWidth = 4; c.beginPath(); c.moveTo(x - 128, y - 196); c.quadraticCurveTo(x - 70, y - 300, x, y - 304); c.quadraticCurveTo(x + 70, y - 300, x + 128, y - 196); c.closePath(); c.fill(); c.stroke();
+  c.strokeStyle = 'rgba(20,80,30,.55)'; c.lineWidth = 2; for (let i = -3; i <= 3; i++) { c.beginPath(); c.moveTo(x, y - 300); c.quadraticCurveTo(x + i * 22, y - 250, x + i * 38, y - 198); c.stroke(); }
+  c.fillStyle = '#2f8a3a'; c.strokeStyle = '#1f5a2a'; c.lineWidth = 3; for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(x - 120 + i * 30, y - 196, 15, 0, Math.PI); c.fill(); c.stroke(); }
+  // 깃발
+  c.strokeStyle = '#4a2f16'; c.lineWidth = 4; c.beginPath(); c.moveTo(x + 14, y - 300); c.lineTo(x + 14, y - 346); c.stroke();
+  c.fillStyle = '#ff6a8a'; c.beginPath(); c.moveTo(x + 14, y - 346); c.lineTo(x + 56 + Math.sin(t * 4) * 6, y - 334); c.lineTo(x + 14, y - 322); c.closePath(); c.fill();
+  // 간판
+  c.font = `26px ${FONT}`; c.textAlign = 'center'; c.lineWidth = 6; c.lineJoin = 'round'; c.strokeStyle = '#1f5a2a'; c.strokeText('★ 개미 호텔 ★', x, y - 232); c.fillStyle = '#fff6c4'; c.fillText('★ 개미 호텔 ★', x, y - 232);
+  drawSign(c, x - 150, y + 16, '1박: 꿀 1개', 150);
+}
+function drawDoorman(c, t) {
+  const fx = HOTEL.x + 82, fy = HOTEL.y + 34, per = (t * .8) % 3.7;
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(fx, fy, 34, 7, 0, 0, 7); c.fill();
+  drawAnt(c, fx, fy - 46 + Math.sin(t * 3) * 1.2, 1.1, { wig: t, leg: 0, walk: 0, bite: 0, flip: -1, lx: -1, ly: 0, open: Math.floor(t / 4) % 2 ? .9 : 0, spread: 0, perk: 0, squash: 0, blink: per < .22 ? Math.sin(per / .22 * 3.14) : 0, c0: '#4a6a9a', c1: '#243a5a' });
+}
 function drawGround(c, camX, camY, t) {
   c.fillStyle = '#5db03f'; c.fillRect(camX - 2, camY - 2, W + 4, H + 4);
   const x0 = Math.floor(camX / 90) * 90, y0 = Math.floor(camY / 90) * 90;
@@ -981,6 +1026,8 @@ function renderOutside(c, t) {
   for (const o of OBST) if (vis(o.x, o.y, 120)) L.push([o.y, () => o.k === 'tree' ? drawTree(c, o) : drawRock(c, o)]);
   for (const f of OUT.flowers) if (vis(f.x, f.y, 50)) L.push([f.y, () => drawFlower(c, { y: f.y, h: f.h * .65, c: f.c, cut: f.cut, p: f.p }, f.x, t)]);
   L.push([HOME.y, () => drawHome(c, t)]);
+  L.push([HOTEL.y, () => drawHotel(c, t)]);
+  L.push([HOTEL.y + 34, () => drawDoorman(c, t)]);
   // 연못 가는 길목의 울타리(Lv.6 미만은 닫혀 있다)
   for (let y = 60; y <= OH - 60; y += 70) {
     const gap = y > 1290 && y < 1410;
@@ -1051,7 +1098,7 @@ function renderOutside(c, t) {
     c.fillStyle = '#5cbadf'; c.beginPath(); c.ellipse(mx + POND.x * k, my + POND.y * k, POND.rx * k, POND.ry * k, 0, 0, 7); c.fill();
     c.strokeStyle = '#c9a566'; c.lineWidth = 2; for (const P of PATHS) { c.beginPath(); P.forEach((p, i) => i ? c.lineTo(mx + p[0] * k, my + p[1] * k) : c.moveTo(mx + p[0] * k, my + p[1] * k)); c.stroke(); }
     c.strokeStyle = level >= 6 ? '#8fe08a' : '#ff8a6a'; c.lineWidth = 2; c.beginPath(); c.moveTo(mx + GATE_X * k, my); c.lineTo(mx + GATE_X * k, my + mh); c.stroke();
-    for (const [p, col] of [[HOME, '#ffe27a'], [REED, '#ffffff']]) { c.fillStyle = col; c.beginPath(); c.arc(mx + p.x * k, my + p.y * k, 3.5, 0, 7); c.fill(); }
+    for (const [p, col] of [[HOME, '#ffe27a'], [HOTEL, '#ff9ad0'], [REED, '#ffffff']]) { c.fillStyle = col; c.beginPath(); c.arc(mx + p.x * k, my + p.y * k, 3.5, 0, 7); c.fill(); }
     if (OUT.worm.alive) { c.fillStyle = '#ff9aa0'; c.beginPath(); c.arc(mx + OUT.worm.x * k, my + OUT.worm.y * k, 3, 0, 7); c.fill(); }
     c.fillStyle = Math.floor(t * 3) % 2 ? '#fff' : '#ff4a3a'; c.beginPath(); c.arc(mx + player.x * k, my + (player.y + 55) * k, 3.5, 0, 7); c.fill();
   }
@@ -1184,7 +1231,7 @@ function drawHUD(c, t) {
   if (player.active && !ending && !mg) {   // 이름·레벨·식량
     rr(c, W - 214, 56, 194, 64, 10); c.fillStyle = 'rgba(0,0,0,.5)'; c.fill();
     c.textAlign = 'right'; c.font = `20px ${FONT}`; c.fillStyle = '#ffe9a8'; c.fillText('Lv.' + level + '  ' + nick, W - 30, 79);
-    c.font = `15px ${FONT}`; c.fillStyle = '#e6c9a0'; c.fillText('굴 식량 ' + food + (train ? '   공격 +' + train * 2 : ''), W - 30, 98);
+    c.font = `15px ${FONT}`; c.fillStyle = '#e6c9a0'; c.fillText('굴 식량 ' + food + (train ? '   공격 +' + train * 2 : '') + (restBuff ? '   숙면 ' + restBuff : ''), W - 30, 98);
     c.fillStyle = 'rgba(255,255,255,.2)'; c.fillRect(W - 194, 106, 160, 6); c.fillStyle = '#ffd23f'; c.fillRect(W - 194, 106, 160 * xp / xpNeed(level), 6);
   }
   if (scene === 'gym' && player.active && !ending && !mg && !invOpen && !trans && !gym && Math.abs(player.x - GYM_X) < 130) {
@@ -1203,6 +1250,19 @@ function drawHUD(c, t) {
     c.globalAlpha = a; c.textAlign = 'center'; c.font = `46px ${FONT}`; c.lineWidth = 8; c.strokeStyle = '#3a2213'; c.lineJoin = 'round';
     c.strokeText('지렁이를 무세요!', W / 2, 150); c.fillStyle = '#fff3b0'; c.fillText('지렁이를 무세요!', W / 2, 150);
     c.font = `20px ${FONT}`; c.lineWidth = 5; c.strokeText('F 키로 물기', W / 2, 188); c.fillStyle = '#fff'; c.fillText('F 키로 물기', W / 2, 188); c.globalAlpha = 1;
+  }
+  if (nearHotel() && player.active && !ending && !mg && !invOpen && !trans && !restFx && !hs && !cs && !bt) {
+    c.textAlign = 'center'; c.font = `22px ${FONT}`; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineJoin = 'round';
+    const msg = 'G: 개미 호텔에서 쉬기 (꿀 또는 지렁이 고기 1개) — 다음 전투 3번 공격력 +10%';
+    c.strokeText(msg, W / 2, 168); c.fillStyle = (inv.honey > 0 || inv.worm > 0) ? '#fff3b0' : 'rgba(255,255,255,.7)'; c.fillText(msg, W / 2, 168);
+  }
+  if (restFx) {   // 하룻밤 쉬는 화면
+    const p = restFx.t, a = Math.min(seg(p, 0, .9), 1 - seg(p, 2.3, 3.1));
+    c.fillStyle = `rgba(8,10,32,${.96 * a})`; c.fillRect(0, 0, W, H);
+    c.globalAlpha = a; c.fillStyle = '#fff3c0'; c.beginPath(); c.arc(W / 2 - 150, 170, 44, 0, 7); c.fill(); c.fillStyle = '#0c0e28'; c.beginPath(); c.arc(W / 2 - 128, 160, 40, 0, 7); c.fill();
+    c.fillStyle = '#fff'; for (let i = 0; i < 22; i++) { c.beginPath(); c.arc((i * 137) % W, 40 + (i * 61) % 240, 1.5 + (i % 3), 0, 7); c.fill(); }
+    c.textAlign = 'center'; c.font = `60px ${FONT}`; c.fillStyle = '#dfe6ff'; c.fillText('Zzz…', W / 2 + 60, 190 + Math.sin(p * 3) * 8);
+    c.font = `24px ${FONT}`; c.fillText('푹 쉬는 중이에요', W / 2, 320); c.globalAlpha = 1;
   }
   if (toast) {
     const a = clamp(2 - toast.t);
@@ -1528,6 +1588,7 @@ function startBattle(opts) {
   const team = [mkMon(FRIENDS.leader, level, nick, null, null)];
   eggs.slice(1).forEach(e => { if (e.follow && FRIENDS[e.name]) team.push(mkMon(FRIENDS[e.name], Math.max(1, level - 1), e.name, e.c0, e.c1)); });
   team.forEach(m => { m.atk += train * 2; });
+  if (restBuff > 0) { team.forEach(m => { m.atk *= 1.1; }); restBuff--; }
   bt = { t: 0, team, act: 0, gunLeft: 3, twigCd: 0, air: 30, wins: 0, shake: { p: 0, e: 0 }, anim: null, q: [], phase: 'msg', msg: '', msgT: 0, cur: 0, forced: false, over: null, needSwitch: false, enemy: null, stage: pondWins % ENEMIES.length, ...(opts || {}) };
   spawnEnemy();
 }
@@ -1866,7 +1927,7 @@ function drawBT(c, t) {
 /* ================= 1인칭 시점 (굴 밖 풀밭) =================
    V 키로 3인칭과 바꾼다. 마우스(클릭 후)나 손가락 드래그로 둘러보고, 개미산 총을 쏠 수 있다. */
 const FP = { on: false, yaw: 0, pitch: 0, gunCd: 0, recoil: 0, shots: [], targets: [] };
-const busy = () => !!(trans || invOpen || mg || hs || cs || bt || gym || ending);
+const busy = () => !!(trans || invOpen || mg || hs || cs || bt || gym || ending || restFx);
 function toggleFP() {
   FP.on = !FP.on;
   if (FP.on) { FP.yaw = Math.atan2(player.fdy, player.fdx); FP.pitch = 0; toast = { text: '1인칭: 화면을 클릭하면 마우스로 둘러봐요 · X나 클릭: 개미산 발사 · V: 3인칭', t: 0 }; }
@@ -1950,6 +2011,8 @@ function renderFirst(c, t) {
   for (const o of OBST) spr(o.x, o.y, () => o.k === 'tree' ? drawTree(c, o) : drawRock(c, o));
   for (const f of OUT.flowers) if (Math.hypot(f.x - px, f.y - py) < 1500) spr(f.x, f.y, () => drawFlower(c, { y: f.y, h: f.h * .65, c: f.c, cut: f.cut, p: f.p }, f.x, t), f.cut ? null : { kind: 'flower', obj: f, hw: 26, hh: f.h * .65 + 14 });
   spr(HOME.x, HOME.y + 30, () => drawHome(c, t));
+  spr(HOTEL.x, HOTEL.y, () => drawHotel(c, t));
+  spr(HOTEL.x + 82, HOTEL.y + 34, () => drawDoorman(c, t), null, 190);
   if (pet.on) spr(pet.x, pet.y + 25, () => drawPet(c, t), null, 120);
   for (const cr of SKY) spr(cr.x, cr.y, () => {
     c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(cr.x, cr.y, 18, 6, 0, 0, 7); c.fill();
@@ -2000,7 +2063,7 @@ function renderFirst(c, t) {
     c.fillStyle = '#5cbadf'; c.beginPath(); c.ellipse(mx + POND.x * k, my + POND.y * k, POND.rx * k, POND.ry * k, 0, 0, 7); c.fill();
     c.strokeStyle = '#c9a566'; c.lineWidth = 2; for (const P of PATHS) { c.beginPath(); P.forEach((p, i) => i ? c.lineTo(mx + p[0] * k, my + p[1] * k) : c.moveTo(mx + p[0] * k, my + p[1] * k)); c.stroke(); }
     c.strokeStyle = level >= 6 ? '#8fe08a' : '#ff8a6a'; c.beginPath(); c.moveTo(mx + GATE_X * k, my); c.lineTo(mx + GATE_X * k, my + mh); c.stroke();
-    for (const [p, col] of [[HOME, '#ffe27a'], [REED, '#ffffff']]) { c.fillStyle = col; c.beginPath(); c.arc(mx + p.x * k, my + p.y * k, 3.5, 0, 7); c.fill(); }
+    for (const [p, col] of [[HOME, '#ffe27a'], [HOTEL, '#ff9ad0'], [REED, '#ffffff']]) { c.fillStyle = col; c.beginPath(); c.arc(mx + p.x * k, my + p.y * k, 3.5, 0, 7); c.fill(); }
     if (OUT.worm.alive) { c.fillStyle = '#ff9aa0'; c.beginPath(); c.arc(mx + OUT.worm.x * k, my + OUT.worm.y * k, 3, 0, 7); c.fill(); }
     const pxm = mx + player.x * k, pym = my + (player.y + 55) * k;
     c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.moveTo(pxm, pym); c.arc(pxm, pym, 20, FP.yaw - .6, FP.yaw + .6); c.closePath(); c.fill();
@@ -2031,7 +2094,7 @@ function skySpawn(anywhere) {
   let x, y;
   if (anywhere) { x = 100 + Math.random() * (OW - 200); y = 150 + Math.random() * (OH - 300); }
   else { const a = Math.random() * 6.283, r = 800 + Math.random() * 500; x = player.x + Math.cos(a) * r; y = player.y + Math.sin(a) * r; }
-  SKY.push({ kind, x: clamp(x, 80, OW - 80), y: clamp(y, 140, OH - 140), z: 100 + Math.random() * 120, vx: 0, vy: 0, a: Math.random() * 6.283, ph: Math.random() * 6.283, fl: 1, mode: 'wander', hue: SKY_HUES[Math.floor(Math.random() * SKY_HUES.length)] });
+  SKY.push({ kind, x: clamp(x, 80, OW - 80), y: clamp(y, 140, OH - 140), z: 170 + Math.random() * 150, vx: 0, vy: 0, a: Math.random() * 6.283, ph: Math.random() * 6.283, fl: 1, mode: 'wander', hue: SKY_HUES[Math.floor(Math.random() * SKY_HUES.length)] });
 }
 function skyInit() { SKY.length = 0; skyCd = 0; for (let i = 0; i < 20; i++) skySpawn(true); }
 function updateSky(dt, t) {
@@ -2043,7 +2106,7 @@ function updateSky(dt, t) {
     const chase = T.hostile && player.active && skyCd <= 0 && dist < T.aggro;
     let tx, ty, tz, sp = T.sp;
     if (chase) { tx = player.x; ty = player.y + 55; tz = 60 + Math.sin(t * 3 + c.ph) * 10; sp = T.sp * 1.15; c.mode = 'chase'; }
-    else { c.a += (Math.random() - .5) * 2.4 * dt; tx = c.x + Math.cos(c.a) * 120; ty = c.y + Math.sin(c.a) * 120; tz = 120 + Math.sin(t * .7 + c.ph) * 70; c.mode = 'wander'; }
+    else { c.a += (Math.random() - .5) * 2.4 * dt; tx = c.x + Math.cos(c.a) * 120; ty = c.y + Math.sin(c.a) * 120; tz = 240 + Math.sin(t * .7 + c.ph) * 90; c.mode = 'wander'; }
     const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy) || 1, k = Math.min(1, dt * 2.5);
     c.vx += (dx / d * sp - c.vx) * k; c.vy += (dy / d * sp - c.vy) * k;
     c.x += c.vx * dt; c.y += c.vy * dt; c.z += (tz - c.z) * Math.min(1, dt * 1.5);
@@ -2167,7 +2230,7 @@ function drawPet(c, t) {
 /* ---------- 저장 / 이어하기 ----------
    브라우저(localStorage)에 자동 저장한다. 파일을 업데이트해도 같은 브라우저에서는 그대로 남는다.
    저장 데이터에 버전(v)을 두고, 읽을 때 값을 검사해서 새로 생긴 항목은 기본값으로, 사라진 항목은 버린다. */
-const SAVE_VER = 2, SLOTS = 3, SLOT_KEY = n => 'antAdventure.save.' + n;
+const SAVE_VER = 3, SLOTS = 3, SLOT_KEY = n => 'antAdventure.save.' + n;
 // 예전(저장칸이 하나뿐이던 때) 저장은 비어 있는 첫 칸으로 옮긴다
 function migrateOldSave() {
   try {
@@ -2182,7 +2245,7 @@ function loadSave(n) {
     const num = (v, a, b, def) => (typeof v === 'number' && isFinite(v)) ? Math.min(b, Math.max(a, Math.floor(v))) : def;
     const o = { nick: typeof d.nick === 'string' && d.nick.trim() ? d.nick.slice(0, 8) : '개미', level: num(d.level, 1, 99, 1), xp: num(d.xp, 0, 1e6, 0), food: num(d.food, 0, 1e6, 0), inv: {}, flowers: [], worm: !!d.worm, pond: num(d.pond, 0, 9999, 0), train: num(d.train, 0, 15, 0), kit: !!d.kit };
     if (d.inv && typeof d.inv === 'object') for (const k in d.inv) if (ITEMS[k]) { const n = num(d.inv[k], 0, 9999, 0); if (n > 0) o.inv[k] = n; }
-    if (Array.isArray(d.flowers) && d.v >= 2) o.flowers = d.flowers.filter(i => Number.isInteger(i) && i >= 0 && i < OUT.flowers.length);
+    if (Array.isArray(d.flowers) && d.v >= 3) o.flowers = d.flowers.filter(i => Number.isInteger(i) && i >= 0 && i < OUT.flowers.length);
     return o;
   } catch (e) { return null; }
 }
